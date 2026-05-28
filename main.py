@@ -5,8 +5,8 @@ import logging
 import os
 import re
 import sqlite3
-
-from playwright.async_api import async_playwright
+import requests
+from bs4 import BeautifulSoup
 
 from telegram import (
     Update,
@@ -210,54 +210,24 @@ db = Database()
 # IVASMS SCRAPER
 # ==========================================
 
+
 class SourceClient:
 
     def __init__(self):
 
-        self.browser = None
-
-        self.page = None
-
-        self.playwright = None
+        self.session = requests.Session()
 
     async def start(self):
 
-        self.playwright = await async_playwright().start()
+        payload = {
+            "email": IVASMS_USER,
+            "password": IVASMS_PASS
+        }
 
-        self.browser = await self.playwright.chromium.launch(
-            headless=HEADLESS,
-            args=["--no-sandbox"]
+        self.session.post(
+            IVASMS_LOGIN_URL,
+            data=payload
         )
-
-        context = await self.browser.new_context()
-
-        self.page = await context.new_page()
-
-        await self.login()
-
-    async def login(self):
-
-        await self.page.goto(
-            IVASMS_LOGIN_URL
-        )
-
-        await asyncio.sleep(5)
-
-        await self.page.fill(
-            'input[type="email"]',
-            IVASMS_USER
-        )
-
-        await self.page.fill(
-            'input[type="password"]',
-            IVASMS_PASS
-        )
-
-        await self.page.click(
-            'button[type="submit"]'
-        )
-
-        await asyncio.sleep(8)
 
         logger.info(
             "Logged into IVASMS"
@@ -265,24 +235,23 @@ class SourceClient:
 
     async def fetch_numbers(self):
 
-        await self.page.goto(
+        response = self.session.get(
             IVASMS_NUMBERS_URL
         )
 
-        await asyncio.sleep(5)
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
 
-        content = await self.page.locator(
-            "body"
-        ).inner_text()
+        text = soup.get_text()
 
         found = re.findall(
             r'\+?\d{7,15}',
-            content
+            text
         )
 
         return list(set(found))
-
-source = SourceClient()
 
 # ==========================================
 # CHANNEL JOIN CHECK
